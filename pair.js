@@ -13,118 +13,134 @@ const {
 } = require("@whiskeysockets/baileys");
 const { upload } = require("./mega");
 
-// Clean old files
 function removeFile(FilePath) {
   if (!fs.existsSync(FilePath)) return false;
   fs.rmSync(FilePath, { recursive: true, force: true });
 }
 
-// Route: GET /?number=NUMBER
 router.get("/", async (req, res) => {
   let num = req.query.number;
-
-  // Main function
-  async function startBot() {
+  async function RobinPair() {
     const { state, saveCreds } = await useMultiFileAuthState(`./session`);
-
-    let sock = makeWASocket({
-      auth: {
-        creds: state.creds,
-        keys: makeCacheableSignalKeyStore(
-          state.keys,
-          pino({ level: "silent" })
-        ),
-      },
-      logger: pino({ level: "silent" }),
-      browser: Browsers.macOS("Safari"),
-      printQRInTerminal: false,
-    });
-
-    sock.ev.on("creds.update", saveCreds); // Always save updates
-
-    // ✅ If already registered, skip pairing
-    if (sock.authState.creds.registered) {
-      if (!res.headersSent) {
-        res.send({ status: "Already paired!" });
-      }
-      return;
-    }
-
     try {
-      // Clean number format
-      num = num.replace(/[^0-9]/g, "");
-      const code = await sock.requestPairingCode(num);
-
-      if (!res.headersSent) {
-        res.send({ code });
-      }
-
-      sock.ev.on("connection.update", async (update) => {
-        const { connection, lastDisconnect } = update;
-
-        if (connection === "open") {
-          console.log("✅ Connected!");
-
-          await delay(5000); // Delay before sending session info
-          const user_jid = jidNormalizedUser(sock.user.id);
-
-          // Upload session to mega
-          const mega_url = await upload(
-            fs.createReadStream("./session/creds.json"),
-            `${generateRandomId()}.json`
-          );
-
-          const session_id = mega_url.replace("https://mega.nz/file/", "");
-
-          const sessionText = `*𝐏𝐑𝐈𝐍𝐙𝐘 𝐌𝐃 [The powerful WA BOT]*\n\n👉 ${session_id} 👈\n\n*Copy this Session ID and paste into config.js*\n\n🔗 Bot Repo: https://github.com/sathsidu99/PRINZY-MD\n\n⚠ *Do not share this code!*`;
-
-          await sock.sendMessage(user_jid, {
-            image: { url: "https://files.catbox.moe/gvyk58.jpeg" },
-            caption: sessionText,
-          });
-
-          await sock.sendMessage(user_jid, {
-            text: session_id,
-          });
-
-          await sock.sendMessage(user_jid, {
-            text: "🛑 *Do not share this code to anyone* 🛑",
-          });
-
-          await delay(500);
-          console.log("✅ Session sent successfully!");
-
-        } else if (connection === "close") {
-          const code = lastDisconnect?.error?.output?.statusCode;
-          console.log("Disconnected with code: ", code);
-          if (code !== 401) {
-            exec("pm2 restart Robin");
-          }
-        }
+      let RobinPairWeb = makeWASocket({
+        auth: {
+          creds: state.creds,
+          keys: makeCacheableSignalKeyStore(
+            state.keys,
+            pino({ level: "fatal" }).child({ level: "fatal" })
+          ),
+        },
+        printQRInTerminal: false,
+        logger: pino({ level: "fatal" }).child({ level: "fatal" }),
+        browser: Browsers.macOS("Safari"),
       });
 
-    } catch (err) {
-      console.log("Error during pairing:", err);
-      if (!res.headersSent) {
-        res.send({ code: "Service Unavailable" });
+      if (!RobinPairWeb.authState.creds.registered) {
+        await delay(1500);
+        num = num.replace(/[^0-9]/g, "");
+        const code = await RobinPairWeb.requestPairingCode(num);
+        if (!res.headersSent) {
+          await res.send({ code });
+        }
       }
-      exec("pm2 restart Robin");
+
+      RobinPairWeb.ev.on("creds.update", saveCreds);
+      RobinPairWeb.ev.on("connection.update", async (s) => {
+        const { connection, lastDisconnect } = s;
+        if (connection === "open") {
+          try {
+            await delay(10000);
+            const sessionPrabath = fs.readFileSync("./session/creds.json");
+
+            const auth_path = "./session/";
+            const user_jid = jidNormalizedUser(RobinPairWeb.user.id);
+
+            function randomMegaId(length = 6, numberLength = 4) {
+              const characters =
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+              let result = "";
+              for (let i = 0; i < length; i++) {
+                result += characters.charAt(
+                  Math.floor(Math.random() * characters.length)
+                );
+              }
+              const number = Math.floor(
+                Math.random() * Math.pow(10, numberLength)
+              );
+              return `${result}${number}`;
+            }
+
+            const mega_url = await upload(
+              fs.createReadStream(auth_path + "creds.json"),
+              `${randomMegaId()}.json`
+            );
+
+            const string_session = mega_url.replace(
+              "https://mega.nz/file/",
+              ""
+            );
+
+            const sid = `*✨ 𝐏𝐑𝐈𝐍𝐙𝐘 𝐌𝐃 - The Powerful WhatsApp Bot ✨
+
+🚀 Your Session ID:
+🔐  👉  ${string_session} 👈  
+
+📌 *Important:*  
+"This is your **unique Session ID**. Copy it and paste it into your config.js file to connect your bot."
+
+📚 Need Help or Have Questions?  
+🧠 Ask me anything via WhatsApp:  
+📞 +94742179316  
+
+📢 Join My Official WhatsApp Channel:  
+🔗 https://whatsapp.com/channel/0029VbAtTAg4tRrlSoeQ7e28  
+
+💻 GitHub Repository:  
+🌐 [PRINZY MD on GitHub](https://github.com/sathsidu99/PRINZY-MD)
+
+❤️ Thank you for choosing *PRINZY MD* — Smooth. Fast. Smart.
+*`;
+            const mg = `🛑 *Do not share this code to anyone* 🛑`;
+            const dt = await RobinPairWeb.sendMessage(user_jid, {
+              image: {
+                url: "https://files.catbox.moe/gvyk58.jpeg",
+              },
+              caption: sid,
+            });
+            const msg = await RobinPairWeb.sendMessage(user_jid, {
+              text: string_session,
+            });
+            const msg1 = await RobinPairWeb.sendMessage(user_jid, { text: mg });
+          } catch (e) {
+            exec("pm2 restart prabath");
+          }
+
+          await delay(100);
+          return await removeFile("./session");
+          process.exit(0);
+        } else if (
+          connection === "close" &&
+          lastDisconnect &&
+          lastDisconnect.error &&
+          lastDisconnect.error.output.statusCode !== 401
+        ) {
+          await delay(10000);
+          RobinPair();
+        }
+      });
+    } catch (err) {
+      exec("pm2 restart Robin-md");
+      console.log("service restarted");
+      RobinPair();
+      await removeFile("./session");
+      if (!res.headersSent) {
+        await res.send({ code: "Service Unavailable" });
+      }
     }
   }
-
-  // Start pairing or resume existing session
-  await startBot();
+  return await RobinPair();
 });
-
-// Utility function to generate random file name for mega upload
-function generateRandomId(length = 8) {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let result = "";
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
 
 process.on("uncaughtException", function (err) {
   console.log("Caught exception: " + err);
