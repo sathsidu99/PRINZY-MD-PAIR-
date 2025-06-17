@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>𝐏𝐑𝐈𝐍𝐙𝐘-𝐌𝐃 | Pair Code</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    body {
+      background: radial-gradient(circle at top left, #0f0c29, #302b63, #24243e);
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #fff;
+      overflow: hidden;
+    }
+
+    .container {
+      background: rgba(0, 0, 0, 0.7);
+      padding: 40px;
+      border-radius: 20px;
+      box-shadow: 0 0 30px #00ffe7, 0 0 60px #00fff2;
+      text-align: center;
+      animation: neon-glow 3s infinite alternate;
+    }
+
+    @keyframes neon-glow {
+      0% { box-shadow: 0 0 10px #00ffe7, 0 0 20px #00fff2; }
+      100% { box-shadow: 0 0 30px #ff0080, 0 0 60px #ff0080; }
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 20px;
+      background: linear-gradient(45deg, #ff0080, #00fff2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); }
+    }
+
+    .input-box {
+      display: flex;
+      margin: 20px auto;
+      max-width: 400px;
+      border-radius: 50px;
+      overflow: hidden;
+      box-shadow: 0 0 15px #00fff2;
+    }
+
+    input {
+      flex: 1;
+      padding: 15px;
+      font-size: 1rem;
+      border: none;
+      outline: none;
+      background: #141414;
+      color: #fff;
+    }
+
+    button {
+      padding: 15px 20px;
+      border: none;
+      background: #00fff2;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+
+    button:hover {
+      background: #ff0080;
+      color: #fff;
+      transform: scale(1.1);
+    }
+
+    #pair {
+      margin-top: 20px;
+      font-size: 1.2rem;
+      word-break: break-word;
+      padding: 10px;
+    }
+
+    #loading-spinner {
+      display: none;
+      margin-top: 15px;
+      font-size: 2rem;
+      color: #00fff2;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      100% { transform: rotate(360deg); }
+    }
+
+    footer {
+      position: absolute;
+      bottom: 20px;
+      font-size: 1rem;
+      color: #ccc;
+      text-shadow: 0 0 5px #ff0080;
+    }
+
+    footer i {
+      color: #ff69b4;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>𝐏𝐑𝐈𝐍𝐙𝐘-𝐌𝐃 🔗 Pair Code</h1>
+    <p>🔢 Enter your WhatsApp number with country code</p>
+
+    <div class="input-box">
+      <input type="text" id="number" placeholder="+947XXXXXXXX" />
+      <button id="submit">Generate</button>
+    </div>
+
+    <div id="loading-spinner">
+      <i class="fas fa-spinner"></i>
+    </div>
+
+    <div id="pair"></div>
+  </div>
+
+  <footer>
+    Powered by <i> Sathsidu Agresara 😊💗 </i>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.0.0-alpha.1/axios.min.js"></script>
+  <script>
+    const pairEl = document.getElementById("pair");
+    const submitBtn = document.getElementById("submit");
+    const numberInput = document.getElementById("number");
+    const spinner = document.getElementById("loading-spinner");
+
+    async function copyToClipboard(text) {
+      await navigator.clipboard.writeText(text);
+      alert("Session Code Copied ✅");
+    }
+
+    submitBtn.addEventListener("click", async () => {
+      const rawNumber = numberInput.value.trim();
+      const cleanNumber = rawNumber.replace(/[^0-9]/g, "");
+
+      if (!cleanNumber || cleanNumber.length < 10) {
+        pairEl.innerHTML = `<span style="color:#ff0080;">❗ Invalid number. Please enter valid number with country code.</span>`;
+        return;
+      }
+
+      spinner.style.display = "block";
+      pairEl.innerHTML = "";
+
+      try {
+        const res = await axios.get(`/code?number=${cleanNumber}`);
+        const code = res.data.code;
+
+        if (code) {
+          pairEl.innerHTML = `
+            <div>
+              <p style="color:#00fff2; font-weight:bold;">🎯 Your Pairing Code:</p>
+              <p style="font-size:20px; cursor:pointer; color:#fff; background:#141414; padding:10px; border-radius:10px;" onclick="copyToClipboard('${code}')">${code}</p>
+              <small style="color:#ff0080;">🔐 Do not share this code with anyone!</small>
+            </div>`;
+        } else {
+          pairEl.innerHTML = `<span style="color:#ff0080;">❗ Failed to get pairing code.</span>`;
+        }
+      } catch (err) {
+        console.error(err);
+        pairEl.innerHTML = `<span style="color:#ff0080;">❗ Server Error. Try again later.</span>`;
+      } finally {
+        spinner.style.display = "none";
+      }
+    });
+  </script>
+</body>
+</html>
