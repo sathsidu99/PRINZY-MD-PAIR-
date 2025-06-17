@@ -1,6 +1,7 @@
 const express = require("express");
 const fs = require("fs");
 const { exec } = require("child_process");
+let router = express.Router();
 const pino = require("pino");
 const {
   default: makeWASocket,
@@ -12,116 +13,122 @@ const {
 } = require("@whiskeysockets/baileys");
 const { upload } = require("./mega");
 
-const router = express.Router();
-
-function removeFile(filePath) {
-  if (fs.existsSync(filePath)) {
-    fs.rmSync(filePath, { recursive: true, force: true });
-  }
+// Clean old files
+function removeFile(FilePath) {
+  if (!fs.existsSync(FilePath)) return false;
+  fs.rmSync(FilePath, { recursive: true, force: true });
 }
 
+// Route: GET /?number=NUMBER
 router.get("/", async (req, res) => {
-  let rawNumber = req.query.number;
-  if (!rawNumber) {
-    return res.status(400).send({ error: "Missing 'number' parameter" });
-  }
-  const num = rawNumber.replace(/[^0-9]/g, ""); // sanitize number
+  let num = req.query.number;
 
-  async function startPairing() {
+  // Main function
+  async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState(`./session`);
 
+    let sock = makeWASocket({
+      auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(
+          state.keys,
+          pino({ level: "silent" })
+        ),
+      },
+      logger: pino({ level: "silent" }),
+      browser: Browsers.macOS("Safari"),
+      printQRInTerminal: false,
+    });
+
+    sock.ev.on("creds.update", saveCreds); // Always save updates
+
+    // ✅ If already registered, skip pairing
+    if (sock.authState.creds.registered) {
+      if (!res.headersSent) {
+        res.send({ status: "Already paired!" });
+      }
+      return;
+    }
+
     try {
-      const sock = makeWASocket({
-        auth: {
-          creds: state.creds,
-          keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })),
-        },
-        printQRInTerminal: false,
-        logger: pino({ level: "silent" }),
-        browser: Browsers.macOS("Safari"),
-      });
+      // Clean number format
+      num = num.replace(/[^0-9]/g, "");
+      const code = await sock.requestPairingCode(num);
 
-      if (!sock.authState.creds.registered) {
-        await delay(1500);
-        const code = await sock.requestPairingCode(num);
-
-        if (!res.headersSent) {
-          res.send({ code });
-        }
+      if (!res.headersSent) {
+        res.send({ code });
       }
 
-      sock.ev.on("creds.update", saveCreds);
+      sock.ev.on("connection.update", async (update) => {
+        const { connection, lastDisconnect } = update;
 
-      sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
         if (connection === "open") {
-          try {
-            await delay(8000); // wait few sec for file write
-            const sessionPath = "./session/creds.json";
-            if (!fs.existsSync(sessionPath)) {
-              console.error("Session file not found");
-              process.exit(1);
-            }
+          console.log("✅ Connected!");
 
-            // Upload to mega
-            const mega_url = await upload(
-              fs.createReadStream(sessionPath),
-              `${generateFileName()}.json`
-            );
+          await delay(5000); // Delay before sending session info
+          const user_jid = jidNormalizedUser(sock.user.id);
 
-            const string_session = mega_url.replace("https://mega.nz/file/", "");
-            const user_jid = jidNormalizedUser(sock.user.id);
+          // Upload session to mega
+          const mega_url = await upload(
+            fs.createReadStream("./session/creds.json"),
+            `${generateRandomId()}.json`
+          );
 
-            const advancedMessage = `*🌟 PRINZY MD - WhatsApp Bot Session 🌟*\n\n🧩 *Session ID:* \`\`\`${string_session}\`\`\`\n\n⚠️ *DO NOT share this Session ID with anyone!*\n\n📚 *Bot Repository:* [Click Here](https://github.com/sathsidu99/PRINZY-MD)\n\n🤖 *Join My WhatsApp Channel:* https://whatsapp.com/channel/0029VbAtTAg4tRrlSoeQ7e28\n\n💬 *Contact Me:* +94742179316`;
+          const session_id = mega_url.replace("https://mega.nz/file/", "");
 
-            await sock.sendMessage(user_jid, {
-              image: { url: "https://files.catbox.moe/gvyk58.jpeg" },
-              caption: advancedMessage,
-            });
+          const sessionText = `*𝐏𝐑𝐈𝐍𝐙𝐘 𝐌𝐃 [The powerful WA BOT]*\n\n👉 ${session_id} 👈\n\n*Copy this Session ID and paste into config.js*\n\n🔗 Bot Repo: https://github.com/sathsidu99/PRINZY-MD\n\n⚠ *Do not share this code!*`;
 
-            await sock.sendMessage(user_jid, { text: `🔑 Your Session ID:\n${string_session}` });
-            await sock.sendMessage(user_jid, { text: `🛑 *Never share this code to anyone!* 🛑` });
+          await sock.sendMessage(user_jid, {
+            image: { url: "https://files.catbox.moe/gvyk58.jpeg" },
+            caption: sessionText,
+          });
 
-          } catch (err) {
-            console.error("Error after connection open:", err);
-            process.exit(1);
-          } finally {
-            await delay(100);
-            removeFile("./session");
-            process.exit(0);
+          await sock.sendMessage(user_jid, {
+            text: session_id,
+          });
+
+          await sock.sendMessage(user_jid, {
+            text: "🛑 *Do not share this code to anyone* 🛑",
+          });
+
+          await delay(500);
+          console.log("✅ Session sent successfully!");
+
+        } else if (connection === "close") {
+          const code = lastDisconnect?.error?.output?.statusCode;
+          console.log("Disconnected with code: ", code);
+          if (code !== 401) {
+            exec("pm2 restart Robin");
           }
-        }
-
-        if (connection === "close" && lastDisconnect?.error?.output?.statusCode !== 401) {
-          console.warn("Connection closed, restarting...");
-          process.exit(1);
         }
       });
 
     } catch (err) {
-      console.error("Fatal Error:", err);
-      removeFile("./session");
-      process.exit(1);
+      console.log("Error during pairing:", err);
+      if (!res.headersSent) {
+        res.send({ code: "Service Unavailable" });
+      }
+      exec("pm2 restart Robin");
     }
   }
 
-  await startPairing();
+  // Start pairing or resume existing session
+  await startBot();
 });
 
-// Handle any uncaught exceptions
-process.on("uncaughtException", (err) => {
-  console.error("Uncaught Exception:", err);
-  process.exit(1);
-});
-
-// Generate random filename for Mega upload
-function generateFileName(length = 6, numberLength = 4) {
+// Utility function to generate random file name for mega upload
+function generateRandomId(length = 8) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let text = "";
+  let result = "";
   for (let i = 0; i < length; i++) {
-    text += chars.charAt(Math.floor(Math.random() * chars.length));
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  const number = Math.floor(Math.random() * Math.pow(10, numberLength));
-  return `${text}${number}`;
+  return result;
 }
+
+process.on("uncaughtException", function (err) {
+  console.log("Caught exception: " + err);
+  exec("pm2 restart Robin");
+});
 
 module.exports = router;
